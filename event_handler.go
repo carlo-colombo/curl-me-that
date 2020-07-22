@@ -14,10 +14,28 @@ import (
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/reference"
 	"k8s.io/klog"
 )
 
 type HttpGetFn func(string) (*http.Response, error)
+
+func logErrorf(recorder record.EventRecorder, cm *v1.ConfigMap, messagefmt string, args ...interface{}) {
+	klog.Errorf(messagefmt, args...)
+
+	ref, err := reference.GetReference(scheme.Scheme, cm)
+
+	if err != nil {
+		// as we are getting the configMap from the informers
+		// it should never happen
+		panic(err)
+	}
+
+	recorder.Eventf(ref,
+		v1.EventTypeWarning,
+		"Failed",
+		messagefmt, args...)
+}
 
 func NewResourceEventHandlerFunc(clientset clientset.Interface, getFn HttpGetFn) cache.ResourceEventHandlerFuncs {
 
@@ -27,10 +45,25 @@ func NewResourceEventHandlerFunc(clientset clientset.Interface, getFn HttpGetFn)
 
 			if value, ok := cm.GetAnnotations()["x-k8s.io/curl-me-that"]; ok {
 				klog.Info("annotation detected: ", value)
-				// recorder, _ := eventRecorder(clientset, cm.Namespace)
+				recorder := eventRecorder(clientset, cm.Namespace)
 				components := strings.SplitN(value, "=", 2)
 
-				parsedURL, _ := url.Parse(components[1])
+				if len(components) != 2 {
+					logErrorf(recorder, cm, "cannot parse annotation value, miss '=' : %s", value)
+					return
+				}
+
+				if components[1] == "" {
+					logErrorf(recorder, cm, "empty url: %s", value)
+					return
+				}
+
+				parsedURL, err := url.Parse(components[1])
+
+				if err != nil {
+					logErrorf(recorder, cm, "cannot parse url %s: %s", components[1], err)
+					return
+				}
 
 				if parsedURL.Scheme == "" {
 					parsedURL.Scheme = "http"
@@ -39,14 +72,21 @@ func NewResourceEventHandlerFunc(clientset clientset.Interface, getFn HttpGetFn)
 				resp, err := getFn(parsedURL.String())
 
 				if err != nil {
-					klog.Errorf("boo errror %s", err)
-					// ref, _ := reference.GetReference(scheme.Scheme, cm)
-					// recorder.Event(ref, v1.EventTypeWarning, "asdasd", "asdasdasd")
+					logErrorf(recorder, cm, "failed to connect to %s: %s", components[1], err)
+					return
+				}
+				if resp.StatusCode >= 300 {
+					logErrorf(recorder, cm, "non valid status code connecting to %s: %d", parsedURL.String(), resp.StatusCode)
 					return
 				}
 
 				buf := new(strings.Builder)
-				_, _ = io.Copy(buf, resp.Body)
+				_, err = io.Copy(buf, resp.Body)
+
+				if err != nil {
+					logErrorf(recorder, cm, "response body cannot be read: %s", err)
+					return
+				}
 
 				if cm.Data == nil {
 					cm.Data = map[string]string{}
@@ -61,25 +101,12 @@ func NewResourceEventHandlerFunc(clientset clientset.Interface, getFn HttpGetFn)
 						context.TODO(),
 						cm,
 						v1meta.UpdateOptions{})
-
-				// ref, _ := reference.GetReference(scheme.Scheme, cm)
-				// recorder.Event(ref, v1.EventTypeNormal, "cm updated", "cm update")
-
-				// clientset.
-				// 	CoreV1().
-				// 	Events(cm.Namespace).
-				// 	Create(context.TODO(), &v1.Event{
-				// 		InvolvedObject: ref,
-				// 		ObjectMeta: v1meta.ObjectMeta{
-				// 			Name: "event name",
-				// 		},
-				// 	}, v1meta.CreateOptions{})
 			}
 		},
 	}
 }
 
-func eventRecorder(kubeClient clientset.Interface, namespace string) (record.EventRecorder, error) {
+func eventRecorder(kubeClient clientset.Interface, namespace string) record.EventRecorder {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(
@@ -88,5 +115,5 @@ func eventRecorder(kubeClient clientset.Interface, namespace string) (record.Eve
 	recorder := eventBroadcaster.NewRecorder(
 		scheme.Scheme,
 		v1.EventSource{Component: "curl-me-that"})
-	return recorder, nil
+	return recorder
 }
