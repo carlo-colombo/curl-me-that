@@ -15,6 +15,7 @@ import (
 	. "github.com/onsi/gomega/gstruct"
 
 	v1 "k8s.io/api/core/v1"
+	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 
 	cmt "github.com/carlo-colombo/curl-me-that"
@@ -198,16 +199,9 @@ var _ = Describe("EventHandler", func() {
 					rehf := cmt.NewResourceEventHandlerFunc(fcs, fn)
 
 					rehf.AddFunc(&cm)
-					Eventually(func() []v1.Event {
-						list, err := fcs.
-							CoreV1().
-							Events("testns").
-							List(context.TODO(), metav1.ListOptions{
-								FieldSelector: "involvedObject.name=test-config-map",
-							})
-						Expect(err).ToNot(HaveOccurred())
-						return list.Items
-					}).Should(SatisfyAll(
+					Eventually(
+						listEvents("test-config-map", "testns", fcs),
+					).Should(SatisfyAll(
 						HaveLen(1),
 						WithTransform(func(list []v1.Event) v1.Event {
 							return list[0]
@@ -255,4 +249,17 @@ func (m failingBody) Read(p []byte) (n int, err error) {
 }
 func (m failingBody) Close() error {
 	return errors.New("some error")
+}
+
+func listEvents(name string, namespace string, client clientset.Interface) func() []v1.Event {
+	return func() []v1.Event {
+		list, err := client.
+			CoreV1().
+			Events(namespace).
+			List(context.TODO(), metav1.ListOptions{
+				FieldSelector: "involvedObject.name=" + name,
+			})
+		Expect(err).ToNot(HaveOccurred())
+		return list.Items
+	}
 }

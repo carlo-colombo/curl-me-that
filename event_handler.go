@@ -76,7 +76,7 @@ func NewResourceEventHandlerFunc(clientset clientset.Interface, getFn HttpGetFn)
 					return
 				}
 				if resp.StatusCode >= 300 {
-					logErrorf(recorder, cm, "non valid status code connecting to %s: %d", parsedURL.String(), resp.StatusCode)
+					logErrorf(recorder, cm, "unsuccessful status code from %s: %d", parsedURL.String(), resp.StatusCode)
 					return
 				}
 

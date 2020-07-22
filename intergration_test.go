@@ -5,11 +5,12 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"os"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/onsi/gomega/gexec"
 	"github.com/onsi/gomega/ghttp"
+	. "github.com/onsi/gomega/gstruct"
 	"golang.org/x/net/context"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,31 +24,11 @@ var server *ghttp.Server
 
 var namespace string
 
-func createConfigMap(annotations map[string]string) (*v1.ConfigMap, string) {
-	name := fmt.Sprintf("test-config-map-%d", rand.Int())
-
-	cm, err := kubeClient.
-		CoreV1().
-		ConfigMaps(namespace).
-		Create(context.TODO(), &v1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:        name,
-				Namespace:   namespace,
-				Annotations: annotations,
-			},
-		}, metav1.CreateOptions{})
-
-	Expect(err).NotTo(HaveOccurred())
-	return cm, name
-}
-
 var _ = Describe("Intergration", func() {
 	BeforeEach(func() {
 		var err error
-		session, err = gexec.Start(CurlMeThatCommand, GinkgoWriter, GinkgoWriter)
 
-		Expect(err).NotTo(HaveOccurred())
-		cfg, err := clientcmd.BuildConfigFromFlags("", "/home/ilich/.kube/config")
+		cfg, err := clientcmd.BuildConfigFromFlags("", os.Getenv("KUBECONFIG"))
 		Expect(err).NotTo(HaveOccurred())
 
 		kubeClient, err = kubernetes.NewForConfig(cfg)
@@ -67,7 +48,6 @@ var _ = Describe("Intergration", func() {
 
 	Context("when the url is reachable", func() {
 		It("does a GET request and put the returned value in the data", func() {
-
 			server.AppendHandlers(
 				ghttp.CombineHandlers(
 					ghttp.VerifyRequest("GET", "/"),
@@ -97,6 +77,34 @@ var _ = Describe("Intergration", func() {
 			}).Should(HaveKeyWithValue("mykey", "my-value"))
 
 		})
+		Context("when the url answer with a not 2xx status code", func() {
+			It("add an event referring to the config map", func() {
+				server.AppendHandlers(
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("GET", "/"),
+						ghttp.RespondWith(http.StatusNotFound, "my-value"),
+					),
+				)
+
+				_, name := createConfigMap(map[string]string{
+					"x-k8s.io/curl-me-that": "mykey=" + server.URL(),
+				})
+
+				Eventually(
+					listEvents(name, namespace, kubeClient),
+				).Should(SatisfyAll(
+					HaveLen(1),
+					WithTransform(func(list []v1.Event) v1.Event {
+						return list[0]
+					}, MatchFields(IgnoreExtras, Fields{
+						"Message": ContainSubstring("404"),
+						"Reason":  ContainSubstring("Failed"),
+						"InvolvedObject": MatchFields(IgnoreExtras, Fields{
+							"Name": Equal(name),
+						}),
+					}))))
+			})
+		})
 	})
 
 	AfterEach(func() {
@@ -106,7 +114,23 @@ var _ = Describe("Intergration", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		server.Close()
-		session.Kill()
-		<-session.Exited
 	})
 })
+
+func createConfigMap(annotations map[string]string) (*v1.ConfigMap, string) {
+	name := fmt.Sprintf("test-config-map-%d", rand.Int())
+
+	cm, err := kubeClient.
+		CoreV1().
+		ConfigMaps(namespace).
+		Create(context.TODO(), &v1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        name,
+				Namespace:   namespace,
+				Annotations: annotations,
+			},
+		}, metav1.CreateOptions{})
+
+	Expect(err).NotTo(HaveOccurred())
+	return cm, name
+}

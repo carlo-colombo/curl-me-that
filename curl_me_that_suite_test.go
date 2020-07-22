@@ -14,6 +14,7 @@ var (
 	curlMeThatPath    string
 	session           *gexec.Session
 	CurlMeThatCommand *exec.Cmd
+	err               error
 )
 
 var _ = SynchronizedBeforeSuite(func() []byte {
@@ -27,9 +28,15 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 		curlMeThatPath,
 		"--kubeconfig",
 		os.Getenv("KUBECONFIG"))
+
+	session, err = gexec.Start(CurlMeThatCommand, GinkgoWriter, GinkgoWriter)
+	Expect(err).NotTo(HaveOccurred())
 })
 
 var _ = SynchronizedAfterSuite(func() {
+	session.Kill()
+	<-session.Exited
+
 	gexec.CleanupBuildArtifacts()
 }, func() {})
 
