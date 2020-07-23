@@ -44,10 +44,14 @@ func NewResourceEventHandlerFunc(clientset clientset.Interface, getFn HttpGetFn)
 			cm := obj.(*v1.ConfigMap)
 
 			if value, ok := cm.GetAnnotations()["x-k8s.io/curl-me-that"]; ok {
-				klog.Info("annotation detected: ", value)
-				recorder := eventRecorder(clientset, cm.Namespace)
+				klog.Infof("annotation detected for configmap %s/%s: %s",
+					cm.Namespace,
+					cm.Name,
+					value)
+
 				components := strings.SplitN(value, "=", 2)
 
+				recorder := eventRecorder(clientset, cm.Namespace)
 				if len(components) != 2 {
 					logErrorf(recorder, cm, "cannot parse annotation value, miss '=' : %s", value)
 					return
@@ -55,6 +59,11 @@ func NewResourceEventHandlerFunc(clientset clientset.Interface, getFn HttpGetFn)
 
 				if components[1] == "" {
 					logErrorf(recorder, cm, "empty url: %s", value)
+					return
+				}
+
+				if _, ok := cm.Data[components[0]]; ok {
+					klog.Infof("key `%s` already present in configmap, skipping", components[0])
 					return
 				}
 

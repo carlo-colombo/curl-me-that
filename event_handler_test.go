@@ -54,16 +54,7 @@ var _ = Describe("EventHandler", func() {
 
 				rehf.AddFunc(&cm)
 
-				newCM, err := fcs.
-					CoreV1().
-					ConfigMaps("testns").
-					Get(
-						context.TODO(),
-						"test-config-map",
-						metav1.GetOptions{})
-
-				Expect(err).ToNot(HaveOccurred())
-				Expect(newCM).ToNot(BeNil())
+				newCM := getConfigMap(fcs, "test-config-map")
 
 				By("extracting the key from the value of the annotation")
 				Expect(newCM.Data).To(HaveKey("mykey"))
@@ -128,22 +119,14 @@ var _ = Describe("EventHandler", func() {
 
 				rehf.AddFunc(&cm)
 
-				newCM, err := fcs.
-					CoreV1().
-					ConfigMaps("testns").
-					Get(
-						context.TODO(),
-						"test-config-map",
-						metav1.GetOptions{})
+				newCM := getConfigMap(fcs, "test-config-map")
 
-				Expect(err).ToNot(HaveOccurred())
 				Expect(newCM).ToNot(BeNil())
 				Expect(newCM.Data).ToNot(HaveKey("joke"))
 			})
 
 			Context("when the config map already contains data", func() {
-				It("only replaces the key in the value of the annotation", func() {
-
+				It("integrates the data if the key is not already present", func() {
 					cm := v1.ConfigMap{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      "test-config-map",
@@ -153,7 +136,6 @@ var _ = Describe("EventHandler", func() {
 							},
 						},
 						Data: map[string]string{
-							"mykey":       "to be replaced",
 							"another-key": "will remain",
 						},
 					}
@@ -164,20 +146,41 @@ var _ = Describe("EventHandler", func() {
 
 					rehf.AddFunc(&cm)
 
-					newCM, err := fcs.
-						CoreV1().
-						ConfigMaps("testns").
-						Get(
-							context.TODO(),
-							"test-config-map",
-							metav1.GetOptions{})
-
-					Expect(err).ToNot(HaveOccurred())
-
+					newCM := getConfigMap(fcs, "test-config-map")
 					Expect(newCM.Data).To(
 						SatisfyAll(
 							HaveKeyWithValue("mykey", "a remote answer"),
 							HaveKeyWithValue("another-key", "will remain"),
+						))
+
+				})
+				It("does not change the configmap if the key is already present", func() {
+					cm := v1.ConfigMap{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "test-config-map",
+							Namespace: "testns",
+							Annotations: map[string]string{
+								"x-k8s.io/curl-me-that": "mykey=https://foobar.com",
+							},
+						},
+						Data: map[string]string{
+							"another-key": "will remain",
+							"mykey":       "this too",
+						},
+					}
+
+					mockClient := mockHTTPClient{responseBody: "a remote answer"}
+					fcs := fake.NewSimpleClientset(&cm)
+					rehf := cmt.NewResourceEventHandlerFunc(fcs, mockClient.get)
+
+					rehf.AddFunc(&cm)
+
+					newCM := getConfigMap(fcs, "test-config-map")
+
+					Expect(newCM.Data).To(
+						SatisfyAll(
+							HaveKeyWithValue("another-key", "will remain"),
+							HaveKeyWithValue("mykey", "this too"),
 						))
 
 				})
@@ -262,4 +265,18 @@ func listEvents(name string, namespace string, client clientset.Interface) func(
 		Expect(err).ToNot(HaveOccurred())
 		return list.Items
 	}
+}
+
+func getConfigMap(fcs *fake.Clientset, name string) *v1.ConfigMap {
+	cm, err := fcs.
+		CoreV1().
+		ConfigMaps("testns").
+		Get(
+			context.TODO(),
+			name,
+			metav1.GetOptions{})
+
+	Expect(err).ToNot(HaveOccurred())
+
+	return cm
 }
