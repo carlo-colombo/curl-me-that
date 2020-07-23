@@ -91,3 +91,22 @@ To run tests execute
  ```
  
  Note that integrations tests can fails if run against a cluster with already the `curl-me-that` controller.
+ 
+ ### TODO
+ [ ] Implement a way to recoincile to the desired state in case of failure in updating the config maps during creation. Use `UpdateFunc` or a queue.
+ 
+ # Open questions
+
+1. How would you deploy your controller to a Kubernetes cluster?
+
+> As shown in the `spec.yml` present in the repository I would deploy the controller as `deployment` (with a single replica) in the cluster, mounting a service account with the minimal required permissions and use the facilities from `client-go` to use it to authenticate against the cluster. Using a deployment, instead of a bare pod, allows the pod to be restarted in case of crash or eviction from the node. The controller does not support multiple replicas at the moment, it would probably work but without any gain as all the instance will try to do the same work.
+
+6. In the context of your controller, what is the observed state and what is the desired state?
+
+> The desired state is the config map with the result of curling the url in the data, and the observed state is the config map passed from the informer. The controller act as user that observe a config map with the annotation, perform a GET request and then submit a new desired state of a config map with the result of the request in the data.
+
+7. The content returned when curling URLs may be always different. How is it going to affect your controllers?
+
+> I considered this and decided that if the key is already present in the config maps it should not be changed by the controller. So if the controller is restarted and the config maps are resubmitted to the controller it check the presence of the the key and skip to curl the url. This also means that if a config maps is created on the cluster already containing the key present in the annotation the original value is preserved and nothing is performed.
+>
+> A consequence of different content is that deleting and then recreating a config map is not deterministic: the content can have changed or the url can be not anymore accessibile or viceversa. This is not really controllable from the controller, the only possible solution would be to cache the first result of connecting to the url (content, response status, availability) and always use it but it would reduced the functionality of the controller.
