@@ -103,13 +103,18 @@ func NewResourceEventHandlerFunc(clientset clientset.Interface, getFn HttpGetFn)
 
 				cm.Data[components[0]] = buf.String()
 
-				clientset.
+				_, err = clientset.
 					CoreV1().
 					ConfigMaps(cm.Namespace).
 					Update(
 						context.TODO(),
 						cm,
 						v1meta.UpdateOptions{})
+
+				if err != nil {
+					klog.Errorf("failed to update the configmap: %s", err)
+					return
+				}
 			}
 		},
 	}
