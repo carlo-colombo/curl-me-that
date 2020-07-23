@@ -74,6 +74,12 @@ Events:
 
 ```
 
+### Build the image
+
+`pack build curl-me-that --builder cloudfoundry/cnb:tiny`
+
+The image is built using [pack](https://github.com/buildpacks/pack) from the [Cloud Native Buildpack](https://buildpacks.io/) project. The base image is `cloudfoundry/tiny` a functionally equivalent image to `gcr.io/distroless/base` built on top of Ubuntu and available as builder for Cloud Native Buildpacks that I collaborated creating. 
+
 ### Tests
 
 To run tests execute
