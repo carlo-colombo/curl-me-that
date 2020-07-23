@@ -1,0 +1,55 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: curl-me-that-role
+rules:
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["update", "list", "watch"]
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: curl-me-that-sa
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: curl-me-that
+subjects:
+- kind: ServiceAccount
+  name: curl-me-that-sa
+  apiGroup: ""
+  namespace: default
+roleRef:
+  kind: ClusterRole
+  name: curl-me-that-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: curl-me-that-deployment
+  labels:
+    app: curl-me-that
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: curl-me-that
+  template:
+    metadata:
+      labels:
+        app: curl-me-that
+    spec:
+      serviceAccountName: curl-me-that-sa
+      containers:
+      - name: curl-me-that
+        image: carlocolombo/curl-me-that
