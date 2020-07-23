@@ -57,6 +57,8 @@ Events:  <none>
 
 Config maps are not update if the key extracted from the annotation is already present in the config map to avoid accidentally overriding data.
 
+Urls without schema (e.g. `example.com`) are defaulted to `http` to mimic the default behaviour of `curl`. 
+
 Events are logged in case somethings goes wrong as host unreachable or non 2xx status code from the server. Invalid annotations values are also logged in events.
 
 ```
