@@ -24,7 +24,7 @@ var server *ghttp.Server
 
 var namespace string
 
-var _ = Describe("Intergration", func() {
+var _ = Describe("Integration", func() {
 	BeforeEach(func() {
 		var err error
 
