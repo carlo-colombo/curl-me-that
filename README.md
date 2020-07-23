@@ -93,7 +93,7 @@ To run tests execute
  Note that integrations tests can fails if run against a cluster with already the `curl-me-that` controller.
  
  ### TODO
- [ ] Implement a way to recoincile to the desired state in case of failure in updating the config maps during creation. Use `UpdateFunc` or a queue.
+ * [ ] Implement a way to recoincile to the desired state in case of failure in updating the config maps during creation. Use `UpdateFunc` or a queue.
  
  # Open questions
 
