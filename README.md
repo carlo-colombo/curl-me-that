@@ -1,6 +1,6 @@
 # curl-me-that
 
-A small Kubernetes controller that watch ConfigMaps and inject data from URL inthe  `x-k8s.io/curl-me-that` annotation.
+A small Kubernetes controller that watch `configmaps` annotated with `x-k8s.io/curl-me-that` to inject data from a URL extracted from the annotation.
 
 ### How to run `curl-me-that` in cluster
 
@@ -22,7 +22,7 @@ go build -o curl-me-that main.go event_handler.go
 
 ### How it works
 
-Once it runs agains a cluster, it watches for the creation of config map annotated with`x-k8s.io/curl-me-that`, parses the value of the annotation in the format `key=url` and then put the response of a GET request to the `url` with the `key` in the config map.
+Once it runs agains a cluster, it watches creation of ConfigMaps annotated with`x-k8s.io/curl-me-that`, parses the value of the annotation in the format `key=url` and then put the response of a GET request to the `url` with the `key` in the ConfigMap.
 
 ```bash
 cat <<EOF | kubectl apply -f -
@@ -55,11 +55,11 @@ What's the difference between a guitar and a fish? You can't tuna fish!
 Events:  <none>
 ```
 
-Config maps are not update if the key extracted from the annotation is already present in the config map to avoid accidentally overriding data.
+ConfigMaps are not update if the key extracted from the annotation is already present in the ConfigMap 3to avoid accidentally overriding data.
 
-Urls without schema (e.g. `example.com`) are defaulted to `http` to mimic the default behaviour of `curl`. 
+URLs without schema (e.g. `example.com`) are defaulted to `http` to mimic the default behaviour of `curl`. 
 
-Events are logged in case somethings goes wrong as host unreachable or non 2xx status code from the server. Invalid annotations values are also logged in events.
+Events are logged in case somethings goes wrong as host unreachable or non 2xx status code from the server. Invalid annotations values (missing key, missing `=`) are also reported.
 
 ```
 Name:         example
@@ -87,10 +87,10 @@ The image is built using [pack](https://github.com/buildpacks/pack) from the [Cl
 To run tests execute
 
 ```bash
- KUBECONFIG=/home/ilich/.kube/config go test
+ KUBECONFIG=~/.kube/config go test
  ```
  
- Note that integrations tests can fails if run against a cluster with already the `curl-me-that` controller.
+ Note that integrations tests can fails if run against a cluster with the `curl-me-that` controller already running.
  
  ### TODO
  * [ ] Implement a way to recoincile to the desired state in case of failure in updating the config maps during creation. Use `UpdateFunc` or a queue.
@@ -99,7 +99,7 @@ To run tests execute
 
 1. How would you deploy your controller to a Kubernetes cluster?
 
-> As shown in the `spec.yml` present in the repository I would deploy the controller as `deployment` (with a single replica) in the cluster, mounting a service account with the minimal required permissions and use the facilities from `client-go` to use it to authenticate against the cluster. Using a deployment, instead of a bare pod, allows the pod to be restarted in case of crash or eviction from the node. The controller does not support multiple replicas at the moment, it would probably work but without any gain as all the instance will try to do the same work.
+> As shown in the `spec.yml` present in the repository I would deploy the controller as `deployment` (with a single replica) in the cluster, mounting a service account with the minimal required permissions and use the facilities from `client-go` to use it to authenticate against the cluster. Deployments, instead of a bare pods, allow the pod to be restarted in case of crash or eviction from the node. The controller does not support multiple replicas at the moment, it would probably work but without any benefit as all the instances will try act on the same ConfigMaps.
 
 6. In the context of your controller, what is the observed state and what is the desired state?
 
